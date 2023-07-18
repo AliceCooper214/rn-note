@@ -12,7 +12,14 @@
 
 @implementation RCTContextExecutor
 {
+  // _context 是一个 JSGlobalContextRef 类型的变量，表示一个全局 JavaScript 上下文。 
+  // JSGlobalContextRef 是一个指向 JSGlobalContext 类型结构体的指针。
+  // JSGlobalContext 类型结构体是一个不透明的结构体，它定义了一个 JavaScript 运行环境中的全局变量、函数等。
+  // 在这个类中， _context 变量用来保存 JavaScript 运行环境的全局上下文。
   JSGlobalContextRef _context;
+  // _javaScriptThread 是一个 NSThread 类型的变量，表示一个线程对象。
+  // 在这个类中， _javaScriptThread 变量用于保存执行 JavaScript 代码的线程。
+  // 线程对象用于管理线程的生命周期和执行线程代码。
   NSThread *_javaScriptThread;
 }
 
@@ -107,6 +114,9 @@ static NSError *RCTNSErrorFromJSError(JSContextRef context, JSValueRef jsError)
   }
 }
 
+// 第一个方法 init 采用单例模式，它使用 dispatch_once 函数确保只有一个线程被创建。
+// 该方法在创建 JavaScript 线程，并设置它的名称和优先级后返回一个实例。
+// 它还调用另一个初始化方法 initWithJavaScriptThread:globalContextRef: 并将创建的线程和全局上下文引用（context）传递给它。
 - (instancetype)init
 {
   static NSThread *javaScriptThread;
@@ -122,6 +132,11 @@ static NSError *RCTNSErrorFromJSError(JSContextRef context, JSValueRef jsError)
   return [self initWithJavaScriptThread:javaScriptThread globalContextRef:NULL];
 }
 
+// 第二个方法 initWithJavaScriptThread:globalContextRef: 接受两个参数：JavaScript 线程和全局上下文引用。
+// 它首先将传递的线程和引用保存到实例变量中，然后在 JavaScript 队列上执行一个闭包。
+// 在该闭包中，它首先检查传递的全局上下文引用是否存在，如果存在，则将其保留在实例变量 _context 中。
+// 否则，它将创建一个 JS 上下文组，并在其中创建一个全局上下文。
+// 然后，它添加两个本地钩子： RCTNativeLoggingHook 和 RCTNoop，并将它们命名为 nativeLoggingHook 和 noop。
 - (instancetype)initWithJavaScriptThread:(NSThread *)javaScriptThread globalContextRef:(JSGlobalContextRef)context
 {
   if ((self = [super init])) {
