@@ -21,9 +21,13 @@ NSString *const RCTRootViewReloadNotification = @"RCTRootViewReloadNotification"
 
 @implementation RCTRootView
 {
+  // 用于通讯的队列
   dispatch_queue_t _shadowQueue;
+  // 通讯桥
   RCTBridge *_bridge;
+  // JS引擎，底层是 JSCore
   RCTJavaScriptAppEngine *_appEngine;
+  // 触控事件句柄
   RCTTouchHandler *_touchHandler;
 }
 
@@ -106,6 +110,7 @@ NSString *const RCTRootViewReloadNotification = @"RCTRootViewReloadNotification"
   }
 }
 
+// 加载 Bundle 代码
 - (void)loadBundle
 {
   // Clear view
@@ -126,17 +131,24 @@ NSString *const RCTRootViewReloadNotification = @"RCTRootViewReloadNotification"
   [_appEngine invalidate];
   [_bridge invalidate];
 
+  // executor：生成一个新的用于执行 JS 线程
   _executor = [[RCTContextExecutor alloc] init];
+  // bridge：处理 JS 和 Native 之间的相互通讯。
+  //  Native RCTXXX <=> native moduleIDs <==bridge==> message <=> js function
   _bridge = [[RCTBridge alloc] initWithJavaScriptExecutor:_executor
                                               shadowQueue:_shadowQueue
                                   javaScriptModulesConfig:[RCTModuleIDs config]];
 
+  // appEngine: JavaScriptCore
   _appEngine = [[RCTJavaScriptAppEngine alloc] initWithBridge:_bridge];
+  // touchHandler: 绑定原生手势事件 + 用户触发时通过 bridge 通知 JS
   _touchHandler = [[RCTTouchHandler alloc] initWithEventDispatcher:_bridge.eventDispatcher rootView:self];
 
+  // 使用JS引擎，执行 scriptURL 代码，初始化所有的 Bundle 代码
   [_appEngine loadBundleAtURL:_scriptURL useCache:NO onComplete:callback];
 }
 
+// scriptURL 属性的 set 方法
 - (void)setScriptURL:(NSURL *)scriptURL
 {
   if ([_scriptURL isEqual:scriptURL]) {
@@ -144,6 +156,7 @@ NSString *const RCTRootViewReloadNotification = @"RCTRootViewReloadNotification"
   }
 
   _scriptURL = scriptURL;
+  // 调用 loadBundle 方法
   [self loadBundle];
 }
 
