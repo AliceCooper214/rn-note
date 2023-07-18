@@ -1,5 +1,18 @@
 // Copyright 2004-present Facebook. All Rights Reserved.
 
+/**
+ * @brief
+ *
+ * 这是 React Native 中 RCTBridge 类的头文件。
+ * RCTBridge 负责与 JavaScript 运行时通信，并管理 JavaScript 和本地代码之间的交互。
+ * 该类提供了将 JavaScript 方法调用加入执行队列的方法，以及加载和执行 JavaScript 文件的方法。
+ * 它还包括对 RCTUIManager 的引用，后者负责管理应用程序中视图的层次结构，以及 RCTJavaScriptEventDispatcher 的引用，后者负责在 JavaScript 和本地代码之间分发事件。
+ * 该类还包括一个全局日志函数，可用于将消息打印到 Xcode 和 JS 调试器控制台。
+ * 该类遵循 RCTInvalidating 协议，后者提供了一种在不再需要时使桥接无效的方法。
+ * 请注意，文件中的注释提到存储回调可能会导致引用循环，并建议使用 JSManagedValue 来避免此问题。
+ * 但是，注释还指出，该类目前仍存在泄漏问题，直到问题得到解决为止。
+ */
+
 #import "RCTExport.h"
 #import "RCTInvalidating.h"
 #import "RCTJavaScriptExecutor.h"
@@ -45,12 +58,12 @@ typedef NS_ENUM(NSUInteger, RCTBridgeFields) {
  */
 static inline NSDictionary *RCTSystemErrorObject(NSString *msg)
 {
-  return @{@"systemError": msg ?: @""};
+  return @{@"systemError" : msg ?: @""};
 }
 
 static inline NSDictionary *RCTAPIErrorObject(NSString *msg)
 {
-  return @{@"apiError": msg ?: @""};
+  return @{@"apiError" : msg ?: @""};
 }
 
 /**
@@ -66,8 +79,8 @@ static inline NSDictionary *RCTAPIErrorObject(NSString *msg)
 - (void)enqueueApplicationScript:(NSString *)script url:(NSURL *)url onComplete:(RCTJavaScriptCompleteBlock)onComplete;
 - (void)enqueueUpdateTimers;
 
-@property (nonatomic, readonly) RCTUIManager *uiManager;
-@property (nonatomic, readonly) RCTJavaScriptEventDispatcher *eventDispatcher;
+@property(nonatomic, readonly) RCTUIManager *uiManager;
+@property(nonatomic, readonly) RCTJavaScriptEventDispatcher *eventDispatcher;
 
 // For use in implementing delegates, which may need to queue responses.
 - (RCTResponseSenderBlock)createResponseSenderBlock:(NSInteger)callbackID;

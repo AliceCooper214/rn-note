@@ -134,7 +134,7 @@ NSString *const RCTRootViewReloadNotification = @"RCTRootViewReloadNotification"
   // executor：生成一个新的用于执行 JS 线程
   _executor = [[RCTContextExecutor alloc] init];
   // bridge：处理 JS 和 Native 之间的相互通讯。
-  //  Native RCTXXX <=> native moduleIDs <==bridge==> message <=> js function
+  // Native RCTXXX <=> native moduleIDs <==bridge==> message <=> js function
   _bridge = [[RCTBridge alloc] initWithJavaScriptExecutor:_executor
                                               shadowQueue:_shadowQueue
                                   javaScriptModulesConfig:[RCTModuleIDs config]];
