@@ -3,19 +3,22 @@
  *
  * @providesModule MessageQueue
  */
-'use strict';
-var ErrorUtils = require('ErrorUtils');
+"use strict";
 
-var invariant = require('invariant');
-var warning = require('warning');
+//导入依赖模块
+var ErrorUtils = require("ErrorUtils");
 
-var JSTimersExecution = require('JSTimersExecution');
+var invariant = require("invariant");
+var warning = require("warning");
 
-var INTERNAL_ERROR = 'Error in MessageQueue implementation';
+var JSTimersExecution = require("JSTimersExecution");
+
+var INTERNAL_ERROR = "Error in MessageQueue implementation";
 
 /**
  * So as not to confuse static build system.
  */
+//定义一个require函数,用于获取内部模块
 var requireFunc = require;
 
 /**
@@ -24,7 +27,15 @@ var requireFunc = require;
  * @param {array<*>} params Arguments to method.
  * @returns {*} Return value of method invocation.
  */
-var jsCall = function(module, methodName, params) {
+/**
+ * 调用模块的方法
+ *
+ * @param {Object} module - 模块实例
+ * @param {string} methodName - 要调用的方法名
+ * @param {array} params - 传递的参数
+ * @returns {*} 方法的返回值
+ */
+var jsCall = function (module, methodName, params) {
   return module[methodName].apply(module, params);
 };
 
@@ -40,17 +51,35 @@ var jsCall = function(module, methodName, params) {
  * efficient numeric IDs.
  * @class MessageQueue
  */
-var MessageQueue = function(remoteModulesConfig, localModulesConfig, customRequire) {
+/**
+ * 消息队列类
+ * 用于聚合"工作"并将它们传递给其他线程
+ * 每个 MessageQueue 实例都有一个 "target" 线程
+ * 就是消息要发送到的线程
+ *
+ * @param {object} moduleNameToID - 将模块/方法名转换为id的映射
+ * @class {MessageQueue}
+ */
+var MessageQueue = function (
+  remoteModulesConfig,
+  localModulesConfig,
+  customRequire
+) {
+  // 初始化内部模块的引用
   this._requireFunc = customRequire || requireFunc;
+  // 初始化统计相关
   this._initBookeeping();
+  // 初始化模块名与id之间的映射
   this._initNamingMap(remoteModulesConfig, localModulesConfig);
 };
 
+// 请求数组:并行数组
 // REQUEST: Parallell arrays:
 var REQUEST_MODULE_IDS = 0;
 var REQUEST_METHOD_IDS = 1;
 var REQUEST_PARAMSS = 2;
 // RESPONSE: Parallell arrays:
+// 响应数组:并行数组
 var RESPONSE_CBIDS = 3;
 var RESPONSE_RETURN_VALUES = 4;
 
@@ -68,7 +97,12 @@ var RESPONSE_RETURN_VALUES = 4;
  * even if the `operation` fails half way through completing its task.
  * @return {object} Return value returned from `getReturnValue`.
  */
-var guardReturn = function(operation, operationArguments, getReturnValue, context) {
+var guardReturn = function (
+  operation,
+  operationArguments,
+  getReturnValue,
+  context
+) {
   if (operation) {
     ErrorUtils.applyWithGuard(operation, context, operationArguments);
   }
@@ -79,63 +113,67 @@ var guardReturn = function(operation, operationArguments, getReturnValue, contex
 };
 
 /**
-  * Bookkeeping logic for callbackIDs. We ensure that success and error
-  * callbacks are numerically adjacent.
-  *
-  * We could have also stored the association between success cbID and errorCBID
-  * in a map without relying on this adjacency, but the bookkeeping here avoids
-  * an additional two maps to associate in each direction, and avoids growing
-  * dictionaries (new fields). Instead, we compute pairs of callback IDs, by
-  * populating the `res` argument to `allocateCallbackIDs` (in conjunction with
-  * pooling). Behind this bookeeping API, we ensure that error and success
-  * callback IDs are always adjacent so that when one is invoked, we always know
-  * how to free the memory of the other. By using this API, it is impossible to
-  * create malformed callbackIDs that are not adjacent.
-  */
-var createBookkeeping = function() {
+ * Bookkeeping logic for callbackIDs. We ensure that success and error
+ * callbacks are numerically adjacent.
+ * 回调id的统计逻辑
+ * 保证成功和错误的回调id是相邻的
+ *
+ * We could have also stored the association between success cbID and errorCBID
+ * in a map without relying on this adjacency, but the bookkeeping here avoids
+ * an additional two maps to associate in each direction, and avoids growing
+ * dictionaries (new fields). Instead, we compute pairs of callback IDs, by
+ * populating the `res` argument to `allocateCallbackIDs` (in conjunction with
+ * pooling). Behind this bookeeping API, we ensure that error and success
+ * callback IDs are always adjacent so that when one is invoked, we always know
+ * how to free the memory of the other. By using this API, it is impossible to
+ * create malformed callbackIDs that are not adjacent.
+ */
+var createBookkeeping = function () {
   return {
     /**
      * Incrementing callback ID. Must start at 1 - otherwise converted null
      * values which become zero are not distinguishable from a GUID of zero.
      */
     GUID: 1,
-    errorCallbackIDForSuccessCallbackID: function(successID) {
+    errorCallbackIDForSuccessCallbackID: function (successID) {
       return successID + 1;
     },
-    successCallbackIDForErrorCallbackID: function(errorID) {
+    successCallbackIDForErrorCallbackID: function (errorID) {
       return errorID - 1;
     },
-    allocateCallbackIDs: function(res) {
+    allocateCallbackIDs: function (res) {
       res.successCallbackID = this.GUID++;
       res.errorCallbackID = this.GUID++;
     },
-    isSuccessCallback: function(id) {
+    isSuccessCallback: function (id) {
       return id % 2 === 1;
-    }
+    },
   };
 };
 
 var MessageQueueMixin = {
   /**
+   * 创建高效的通信协议,避免字符串分配
    * Creates an efficient wire protocol for communicating across a bridge.
    * Avoids allocating strings.
    *
    * @param {object} remoteModulesConfig Configuration of modules and their
    * methods.
    */
-  _initNamingMap: function(remoteModulesConfig, localModulesConfig) {
+  _initNamingMap: function (remoteModulesConfig, localModulesConfig) {
     this._remoteModuleNameToModuleID = {};
-    this._remoteModuleIDToModuleName = {};         // Reverse
+    this._remoteModuleIDToModuleName = {}; // Reverse
 
     this._remoteModuleNameToMethodNameToID = {};
-    this._remoteModuleNameToMethodIDToName = {};   // Reverse
+    this._remoteModuleNameToMethodIDToName = {}; // Reverse
 
     this._localModuleNameToModuleID = {};
-    this._localModuleIDToModuleName = {};         // Reverse
+    this._localModuleIDToModuleName = {}; // Reverse
 
     this._localModuleNameToMethodNameToID = {};
-    this._localModuleNameToMethodIDToName = {};   // Reverse
+    this._localModuleNameToMethodIDToName = {}; // Reverse
 
+    // 填充映射关系
     function fillMappings(
       modulesConfig,
       moduleNameToModuleID,
@@ -143,24 +181,35 @@ var MessageQueueMixin = {
       moduleNameToMethodNameToID,
       moduleNameToMethodIDToName
     ) {
+      // 遍历模块配置
       for (var moduleName in modulesConfig) {
         var moduleConfig = modulesConfig[moduleName];
-        var moduleID = moduleConfig.moduleID;
-        moduleNameToModuleID[moduleName] = moduleID;
-        moduleIDToModuleName[moduleID] = moduleName; // Reverse
 
+        // 模块id
+        var moduleID = moduleConfig.moduleID;
+
+        // 建立模块名与id的映射
+        moduleNameToModuleID[moduleName] = moduleID;
+
+        moduleIDToModuleName[moduleID] = moduleName;
+
+        // 每个模块的方法名与id映射
         moduleNameToMethodNameToID[moduleName] = {};
-        moduleNameToMethodIDToName[moduleName] = {}; // Reverse
+        moduleNameToMethodIDToName[moduleName] = {};
+
         var methods = moduleConfig.methods;
+
+        // 遍历方法,建立方法名与id的映射
         for (var methodName in methods) {
           var methodID = methods[methodName].methodID;
-          moduleNameToMethodNameToID[moduleName][methodName] =
-            methodID;
-          moduleNameToMethodIDToName[moduleName][methodID] =
-            methodName; // Reverse
+
+          moduleNameToMethodNameToID[moduleName][methodName] = methodID;
+          moduleNameToMethodIDToName[moduleName][methodID] = methodName;
         }
       }
     }
+
+    // 填充远程模块的映射关系
     fillMappings(
       remoteModulesConfig,
       this._remoteModuleNameToModuleID,
@@ -169,6 +218,7 @@ var MessageQueueMixin = {
       this._remoteModuleNameToMethodIDToName
     );
 
+    // 填充本地模块的映射关系
     fillMappings(
       localModulesConfig,
       this._localModuleNameToModuleID,
@@ -176,11 +226,10 @@ var MessageQueueMixin = {
       this._localModuleNameToMethodNameToID,
       this._localModuleNameToMethodIDToName
     );
-
   },
 
-  _initBookeeping: function() {
-    this._POOLED_CBIDS = {errorCallbackID: null, successCallbackID: null};
+  _initBookeeping: function () {
+    this._POOLED_CBIDS = { errorCallbackID: null, successCallbackID: null };
     this._bookkeeping = createBookkeeping();
 
     /**
@@ -206,13 +255,23 @@ var MessageQueueMixin = {
      * array, that is always pushed `n` elements as a time.
      */
     this._outgoingItems = [
-      /*REQUEST_MODULE_IDS:     */ [/* +-+ +-+ +-+ +-+ */],
-      /*REQUEST_METHOD_IDS:     */ [/* |A| |B| |C| |D| */],
-      /*REQUEST_PARAMSS:        */ [/* |-| |-| |-| |-| */],
+      /*REQUEST_MODULE_IDS:     */ [
+        /* +-+ +-+ +-+ +-+ */
+      ],
+      /*REQUEST_METHOD_IDS:     */ [
+        /* |A| |B| |C| |D| */
+      ],
+      /*REQUEST_PARAMSS:        */ [
+        /* |-| |-| |-| |-| */
+      ],
 
-      /*RESPONSE_CBIDS:         */ [/* +-+ +-+ +-+ +-+ */],
-                                    /* |E| |F| |G| |H| */
-      /*RESPONSE_RETURN_VALUES: */ [/* +-+ +-+ +-+ +-+ */]
+      /*RESPONSE_CBIDS:         */ [
+        /* +-+ +-+ +-+ +-+ */
+      ],
+      /* |E| |F| |G| |H| */
+      /*RESPONSE_RETURN_VALUES: */ [
+        /* +-+ +-+ +-+ +-+ */
+      ],
     ];
 
     /**
@@ -222,22 +281,22 @@ var MessageQueueMixin = {
     this._outgoingItemsSwap = [[], [], [], [], []];
   },
 
-  invokeCallback: function(cbID, args) {
+  invokeCallback: function (cbID, args) {
     return guardReturn(this._invokeCallback, [cbID, args], null, this);
   },
 
-  _invokeCallback: function(cbID, args) {
+  _invokeCallback: function (cbID, args) {
     try {
       var cb = this._threadLocalCallbacksByID[cbID];
       var scope = this._threadLocalScopesByID[cbID];
       warning(
         cb,
-        'Cannot find callback with CBID %s. Native module may have invoked ' +
-        'both the success callback and the error callback.',
-         cbID
+        "Cannot find callback with CBID %s. Native module may have invoked " +
+          "both the success callback and the error callback.",
+        cbID
       );
       cb.apply(scope, args);
-    } catch(ie_requires_catch) {
+    } catch (ie_requires_catch) {
       throw ie_requires_catch;
     } finally {
       // Clear out the memory regardless of success or failure.
@@ -245,7 +304,7 @@ var MessageQueueMixin = {
     }
   },
 
-  invokeCallbackAndReturnFlushedQueue: function(cbID, args) {
+  invokeCallbackAndReturnFlushedQueue: function (cbID, args) {
     if (this._enableLogging) {
       this._loggedIncomingItems.push([new Date().getTime(), cbID, args]);
     }
@@ -257,22 +316,33 @@ var MessageQueueMixin = {
     );
   },
 
-  callFunction: function(moduleID, methodID, params) {
-    return guardReturn(this._callFunction, [moduleID, methodID, params], null, this);
+  callFunction: function (moduleID, methodID, params) {
+    return guardReturn(
+      this._callFunction,
+      [moduleID, methodID, params],
+      null,
+      this
+    );
   },
 
-  _callFunction: function(moduleID, methodID, params) {
+  _callFunction: function (moduleID, methodID, params) {
     var moduleName = this._localModuleIDToModuleName[moduleID];
 
-    var methodName = this._localModuleNameToMethodIDToName[moduleName][methodID];
+    var methodName =
+      this._localModuleNameToMethodIDToName[moduleName][methodID];
     var ret = jsCall(this._requireFunc(moduleName), methodName, params);
 
     return ret;
   },
 
-  callFunctionReturnFlushedQueue: function(moduleID, methodID, params) {
+  callFunctionReturnFlushedQueue: function (moduleID, methodID, params) {
     if (this._enableLogging) {
-      this._loggedIncomingItems.push([new Date().getTime(), moduleID, methodID, params]);
+      this._loggedIncomingItems.push([
+        new Date().getTime(),
+        moduleID,
+        methodID,
+        params,
+      ]);
     }
     return guardReturn(
       this._callFunction,
@@ -282,21 +352,21 @@ var MessageQueueMixin = {
     );
   },
 
-  setLoggingEnabled: function(enabled) {
+  setLoggingEnabled: function (enabled) {
     this._enableLogging = enabled;
     this._loggedIncomingItems = [];
     this._loggedOutgoingItems = [[], [], [], [], []];
   },
 
-  getLoggedIncomingItems: function() {
+  getLoggedIncomingItems: function () {
     return this._loggedIncomingItems;
   },
 
-  getLoggedOutgoingItems: function() {
+  getLoggedOutgoingItems: function () {
     return this._loggedOutgoingItems;
   },
 
-  replayPreviousLog: function(previousLog) {
+  replayPreviousLog: function (previousLog) {
     this._outgoingItems = previousLog;
   },
 
@@ -305,7 +375,7 @@ var MessageQueueMixin = {
    * memory in the current buffer is leaked until the next frame or update - but
    * that will typically be on the order of < 500ms.
    */
-  _swapAndReinitializeBuffer: function() {
+  _swapAndReinitializeBuffer: function () {
     // Outgoing requests
     var currentOutgoingItems = this._outgoingItems;
     var nextOutgoingItems = this._outgoingItemsSwap;
@@ -328,7 +398,7 @@ var MessageQueueMixin = {
    * @param {array<*>?} params Array representing arguments to method.
    * @param {string} cbID Unique ID to pass back in potential response.
    */
-  _pushRequestToOutgoingItems: function(moduleID, methodName, params) {
+  _pushRequestToOutgoingItems: function (moduleID, methodName, params) {
     this._outgoingItems[REQUEST_MODULE_IDS].push(moduleID);
     this._outgoingItems[REQUEST_METHOD_IDS].push(methodName);
     this._outgoingItems[REQUEST_PARAMSS].push(params);
@@ -345,15 +415,15 @@ var MessageQueueMixin = {
    * @param {*} returnValue Return value to pass to callback on other side of
    * bridge.
    */
-  _pushResponseToOutgoingItems: function(cbID, returnValue) {
+  _pushResponseToOutgoingItems: function (cbID, returnValue) {
     this._outgoingItems[RESPONSE_CBIDS].push(cbID);
     this._outgoingItems[RESPONSE_RETURN_VALUES].push(returnValue);
   },
 
-  _freeResourcesForCallbackID: function(cbID) {
-    var correspondingCBID = this._bookkeeping.isSuccessCallback(cbID) ?
-      this._bookkeeping.errorCallbackIDForSuccessCallbackID(cbID) :
-      this._bookkeeping.successCallbackIDForErrorCallbackID(cbID);
+  _freeResourcesForCallbackID: function (cbID) {
+    var correspondingCBID = this._bookkeeping.isSuccessCallback(cbID)
+      ? this._bookkeeping.errorCallbackIDForSuccessCallbackID(cbID)
+      : this._bookkeeping.successCallbackIDForErrorCallbackID(cbID);
     this._threadLocalCallbacksByID[cbID] = null;
     this._threadLocalScopesByID[cbID] = null;
     if (this._threadLocalCallbacksByID[correspondingCBID]) {
@@ -370,7 +440,7 @@ var MessageQueueMixin = {
    * @param {Object?=} scope Scope to invoke `cb` with.
    * @param {Object?=} res Resulting callback ids. Use `this._POOLED_CBIDS`.
    */
-  _storeCallbacksInCurrentThread: function(onFail, onSucc, scope) {
+  _storeCallbacksInCurrentThread: function (onFail, onSucc, scope) {
     invariant(onFail || onSucc, INTERNAL_ERROR);
     this._bookkeeping.allocateCallbackIDs(this._POOLED_CBIDS);
     var succCBID = this._POOLED_CBIDS.successCallbackID;
@@ -380,7 +450,6 @@ var MessageQueueMixin = {
     this._threadLocalScopesByID[errorCBID] = scope;
     this._threadLocalScopesByID[succCBID] = scope;
   },
-
 
   /**
    * IMPORTANT: There is possibly a timing issue with this form of flushing.  We
@@ -399,26 +468,29 @@ var MessageQueueMixin = {
    *    var defensiveCopy = efficientDefensiveCopy(this._outgoingItems);
    *    this._swapAndReinitializeBuffer();
    */
-  flushedQueue: function() {
+  flushedQueue: function () {
     return guardReturn(null, null, this._flushedQueueUnguarded, this);
   },
 
-  _flushedQueueUnguarded: function() {
+  _flushedQueueUnguarded: function () {
     // Call the functions registred via setImmediate
     JSTimersExecution.callImmediates();
 
     var currentOutgoingItems = this._outgoingItems;
     this._swapAndReinitializeBuffer();
-    var ret = currentOutgoingItems[REQUEST_MODULE_IDS].length ||
-      currentOutgoingItems[RESPONSE_RETURN_VALUES].length ? currentOutgoingItems : null;
+    var ret =
+      currentOutgoingItems[REQUEST_MODULE_IDS].length ||
+      currentOutgoingItems[RESPONSE_RETURN_VALUES].length
+        ? currentOutgoingItems
+        : null;
 
     return ret;
   },
 
-  callDeprecated: function(moduleName, methodName, params, cb, scope) {
+  callDeprecated: function (moduleName, methodName, params, cb, scope) {
     invariant(
-      !cb || typeof cb === 'function',
-      'Last argument (callback) must be function'
+      !cb || typeof cb === "function",
+      "Last argument (callback) must be function"
     );
     // Store callback _before_ sending the request, just in case the MailBox
     // returns the response in a blocking manner
@@ -428,39 +500,47 @@ var MessageQueueMixin = {
     }
     var moduleID = this._remoteModuleNameToModuleID[moduleName];
     if (moduleID === undefined || moduleID === null) {
-      throw new Error('Unrecognized module name:' + moduleName);
+      throw new Error("Unrecognized module name:" + moduleName);
     }
-    var methodID = this._remoteModuleNameToMethodNameToID[moduleName][methodName];
+    var methodID =
+      this._remoteModuleNameToMethodNameToID[moduleName][methodName];
     if (methodID === undefined || moduleID === null) {
-      throw new Error('Unrecognized method name:' + methodName);
+      throw new Error("Unrecognized method name:" + methodName);
     }
     this._pushRequestToOutgoingItems(moduleID, methodID, params);
   },
 
-  call: function(moduleName, methodName, params, onFail, onSucc, scope) {
+  call: function (moduleName, methodName, params, onFail, onSucc, scope) {
     invariant(
-      (!onFail || typeof onFail === 'function') &&
-      (!onSucc || typeof onSucc === 'function'),
-      'Callbacks must be functions'
+      (!onFail || typeof onFail === "function") &&
+        (!onSucc || typeof onSucc === "function"),
+      "Callbacks must be functions"
     );
     // Store callback _before_ sending the request, just in case the MailBox
     // returns the response in a blocking manner.
     if (onFail || onSucc) {
-      this._storeCallbacksInCurrentThread(onFail, onSucc, scope, this._POOLED_CBIDS);
+      this._storeCallbacksInCurrentThread(
+        onFail,
+        onSucc,
+        scope,
+        this._POOLED_CBIDS
+      );
       params.push(this._POOLED_CBIDS.errorCallbackID);
       params.push(this._POOLED_CBIDS.successCallbackID);
     }
     var moduleID = this._remoteModuleNameToModuleID[moduleName];
     if (moduleID === undefined || moduleID === null) {
-      throw new Error('Unrecognized module name:' + moduleName);
+      throw new Error("Unrecognized module name:" + moduleName);
     }
-    var methodID = this._remoteModuleNameToMethodNameToID[moduleName][methodName];
+    var methodID =
+      this._remoteModuleNameToMethodNameToID[moduleName][methodName];
     if (methodID === undefined || moduleID === null) {
-      throw new Error('Unrecognized method name:' + methodName);
+      throw new Error("Unrecognized method name:" + methodName);
     }
     this._pushRequestToOutgoingItems(moduleID, methodID, params);
   },
-  __numPendingCallbacksOnlyUseMeInTestCases: function() {
+
+  __numPendingCallbacksOnlyUseMeInTestCases: function () {
     var callbacks = this._threadLocalCallbacksByID;
     var total = 0;
     for (var i = 0; i < callbacks.length; i++) {
@@ -469,7 +549,7 @@ var MessageQueueMixin = {
       }
     }
     return total;
-  }
+  },
 };
 
 Object.assign(MessageQueue.prototype, MessageQueueMixin);
