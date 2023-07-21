@@ -50,6 +50,17 @@ NSString *const RCTContentDidAppearNotification = @"RCTContentDidAppearNotificat
 
 @implementation RCTRootView
 {
+  /**
+    0.0.1
+    // 用于通讯的队列
+    dispatch_queue_t _shadowQueue;
+    // 通讯桥
+    RCTBridge *_bridge;
+    // JS引擎，底层是 JSCore
+    RCTJavaScriptAppEngine *_appEngine;
+    // 触控事件句柄
+    RCTTouchHandler *_touchHandler;
+  */
   RCTBridge *_bridge;
   NSString *_moduleName;
   NSDictionary *_launchOptions;

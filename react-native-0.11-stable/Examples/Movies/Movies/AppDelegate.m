@@ -19,6 +19,7 @@
 
 @implementation AppDelegate
 
+// 在 iOS 应用启动完成后会触发 application didFinishLaunchingWithOptions 回调
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
 {
   NSURL *jsCodeLocation;
@@ -36,7 +37,7 @@
    * `inet` value under `en0:`) and make sure your computer and iOS device are
    * on the same Wi-Fi network.
    */
-
+  // React Native 应用的 JavaScript 代码地址
   jsCodeLocation = [NSURL URLWithString:@"http://localhost:8081/Examples/Movies/MoviesApp.ios.includeRequire.runModule.bundle"];
 
   /**
@@ -51,13 +52,17 @@
 
 //  jsCodeLocation = [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"];
 
+  // React Native 应用根视图的初始化
+  // 将 JavaScript 代码挂到根视图上
   RCTRootView *rootView = [[RCTRootView alloc] initWithBundleURL:jsCodeLocation
                                                       moduleName:@"MoviesApp"
                                                initialProperties:nil
                                                    launchOptions:launchOptions];
-
+  // iOS 应用 UIWindow 主窗口初始化
   self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
   UIViewController *rootViewController = [[UIViewController alloc] init];
+
+  // 将 React Native 应用根视图挂到 UIWindow 上，此时 React Native 视图展示在手机上了
   rootViewController.view = rootView;
   self.window.rootViewController = rootViewController;
   [self.window makeKeyAndVisible];
